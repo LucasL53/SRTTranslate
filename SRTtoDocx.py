@@ -2,6 +2,7 @@ import os
 import pysrt
 from deepl import Translator
 
+
 def srt_translate(srt_file, target_lang):
     '''
     Translates the captions in an existing .srt file to the target language
@@ -18,9 +19,11 @@ def srt_translate(srt_file, target_lang):
     subs.save(new_srt_file)
     print('done')
 
+
 def main():
     # Example usage
-    srt_translate('file.srt', 'KO')
+    srt_translate('SEOUL_VLOG_2.srt', 'JA')
+
 
 if __name__ == '__main__':
     main()
