@@ -1,6 +1,7 @@
 import os
 import pysrt
 from deepl import Translator
+from langdetect import detect
 
 
 def srt_translate_JA(srt_file):
@@ -20,7 +21,13 @@ def srt_translate_JA(srt_file):
     print('done')
 
 def srt_translate_KO(srt_file):
+    # Check if the file contains Japanese captions
+
     subs = pysrt.open(srt_file)
+    if detect(subs[0].text) != 'ja':
+        print(subs[0].text)
+        print('The captions are not in Japanese')
+        return
     translator = Translator(os.environ['DEEPL_AUTH_KEY'])
     for sub in subs:
         sub.text = translator.translate_text(sub.text, target_lang = "KO")
@@ -29,7 +36,12 @@ def srt_translate_KO(srt_file):
     print('done')
 
 def srt_translate_ES(srt_file):
+    # Check if the file contains english captions
     subs = pysrt.open(srt_file)
+    if detect(subs[0].text) != 'en':
+        print(subs[0].text)
+        print('The captions are not in English')
+        return
     translator = Translator(os.environ['DEEPL_AUTH_KEY'])
     for sub in subs:
         sub.text = translator.translate_text(sub.text, target_lang = "ES")
@@ -41,7 +53,7 @@ def main():
     # Example usage
     # srt_translate_JA('Fall_Quarter_Vlog_SRT_English.srt')
     # srt_translate_KO('Fall_Quarter_Vlog_SRT_English.srt')
-    srt_translate_ES('Fall_Quarter_Vlog_SRT_English.srt')
+    # srt_translate_ES('Fall_Quarter_Vlog_SRT_English.srt')
 
 
 if __name__ == '__main__':
