@@ -1,21 +1,19 @@
-# from ..main import TargetLanguage, UPLOAD_DIR, TRANSLATED_DIR
+from fastapi import HTTPException, UploadFile
 
+def validate_srt_file(file: UploadFile):
+    if not file.filename.endswith('.srt'):
+        raise HTTPException(status_code=400, detail="Only .srt files are allowed")
+    if file.size > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(status_code=400, detail="File size too large. Maximum size is 10MB")
+    
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
 
-# def handle_file_upload(file: UploadFile = File(...)):
-#     file_path = os.path.join(UPLOAD_DIR, file.filename)
-#     with open(file_path, "wb") as f:
-#         shutil.copyfileobj(file.file, f)
-#     return {"filename": file.filename}
-
-
-# # TODO: Redesign the process_translation function to use the new translation service
-# def process_translation(file_path, target_lang: TargetLanguage):
-#     if target_lang == JA:
-#         srt_translate_JA(file_path)
-#     elif target_lang == KO:
-#         srt_translate_KO(file_path)
-#     elif target_lang == ES:
-#         srt_translate_ES(file_path)
-#     elif target_lang == CH:
-#         srt_translate_CH(file_path)
-#     return {"filename": file_path.split("/")[-1]}
+    # Check if file is empty
+    file_content = file.file.read()
+    if len(file_content) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
+    
+    # Reset file pointer after reading
+    file.file.seek(0)
+    return file

@@ -27,10 +27,7 @@ def srt_translate(srt_file: str, target_lang: TargetLanguage):
         translated_sentences = translate_sentences(sentences, target_lang)
         translated_subs = map_sentences_back_split(sentences, translated_sentences)
 
-        new_srt_file = srt_file[:-4] + f"-{target_lang}.srt"
-        translated_subs.save(new_srt_file)
-        print(f"Translation complete. File saved as {new_srt_file}")
-        return new_srt_file
+        return translated_subs
     except SRTTranslationError as e:
         print(f"Translation error: {str(e)}")
         raise

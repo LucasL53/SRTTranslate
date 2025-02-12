@@ -1,11 +1,18 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from datetime import datetime
 import os
 import shutil
 
 from ..translation_service.SRTTranslate import srt_translate
 from ..translation_service.TargetLanguage import TargetLanguage
+from .services.file_handler import validate_srt_file
+from .database import get_db, engine
+from .models.translation import TranslationJobResponse
+from .models.translation_job import TranslationJob, TranslationStatus, Base
 
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
@@ -34,36 +41,116 @@ def read_files():
 
 
 # File upload endpoint
-@app.post("/uploadfile/")
+@app.post("/uploadfile/", response_model=TranslationJobResponse)
 async def upload_file(
-    file: UploadFile, target_lang: list[TargetLanguage], background_tasks: BackgroundTasks
+    file: UploadFile,
+    target_lang: list[TargetLanguage],
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
 ):
-    """
-    Args:
-        file (UploadFile, required): _description_. Defaults to File(...).
-        target_lang (TargetLanguage], required): _description_. Defaults to [TargetLanguage.JA].
+    try:
+        _ = validate_srt_file(file)
+        file_path = os.path.join(UPLOAD_DIR, file.filename)
+        with open(file_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-    Returns:
-        status: completion status
-    """
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        # Create translation jobs for each target language
+        jobs = []
+        for lang in target_lang:
+            job = TranslationJob(
+                original_filename=file.filename,
+                target_language=lang.value,
+                status=TranslationStatus.PENDING
+            )
+            db.add(job)
+            db.commit()
+            db.refresh(job)
+            jobs.append(job)
 
-    for lang in target_lang:
-        background_tasks.add_task(srt_translate, file_path, lang)
-    return {"status": "File uploaded and translated"}
+            # Add translation task to background tasks
+            background_tasks.add_task(
+                process_translation,
+                file_path,
+                lang,
+                job.id,
+                db
+            )
+
+        return jobs[0]  # Return the first job for simplicity
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# Fetch translated file endpoint
-@app.get("/translatedfile/{filename}")
-async def fetch_translated_file(filename: str, target_lang: TargetLanguage):
-    file_path = os.path.join(TRANSLATED_DIR, f"{filename}-{target_lang.value}.srt")
-    if not os.path.exists(file_path):
-        uploaded_file_path = os.path.join(UPLOAD_DIR, f"{filename}.srt")
-        if not os.path.exists(uploaded_file_path):
-            raise HTTPException(status_code=404, detail=f"{filename} not found")
-        else:
-            file_name = srt_translate(uploaded_file_path, target_lang)
-            file_path = os.path.join(TRANSLATED_DIR, file_name)
-    return FileResponse(file_path)
+@app.get("/translation/{job_id}", response_model=TranslationJobResponse)
+async def get_translation_status(job_id: int, db: Session = Depends(get_db)):
+    job = db.query(TranslationJob).filter(TranslationJob.id == job_id).first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Translation job not found")
+    return job
+
+
+@app.get("/translations/", response_model=list[TranslationJobResponse])
+async def list_translations(
+    skip: int = 0,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    jobs = db.query(TranslationJob).offset(skip).limit(limit).all()
+    return jobs
+
+
+@app.get("/download/{job_id}")
+async def download_translation(job_id: int, db: Session = Depends(get_db)):
+    job = db.query(TranslationJob).filter(TranslationJob.id == job_id).first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Translation job not found")
+    
+    if job.status != TranslationStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Translation not completed yet")
+    
+    if not os.path.exists(job.translated_file_path):
+        raise HTTPException(status_code=404, detail="Translated file not found")
+    
+    return FileResponse(
+        job.translated_file_path,
+        filename=os.path.basename(job.translated_file_path),
+        media_type="application/x-subrip"
+    )
+
+
+async def process_translation(
+    file_path: str,
+    target_lang: TargetLanguage,
+    job_id: int,
+    db: Session
+):
+    """Background task to process translation and update job status"""
+    try:
+        # Update status to processing
+        job = db.query(TranslationJob).filter(TranslationJob.id == job_id).first()
+        job.status = TranslationStatus.PROCESSING
+        db.commit()
+
+        # Perform translation
+        translated_subs = srt_translate(file_path, target_lang)
+
+        # Save translated subtitles as a new file
+        translated_filename = f"{job.original_filename}-{target_lang.value}.srt"
+        translated_file_path = os.path.join(TRANSLATED_DIR, translated_filename)
+        translated_subs.save(translated_file_path)
+
+        # Update status to completed
+        job.status = TranslationStatus.COMPLETED
+        job.translated_file_path = translated_file_path
+        db.commit()
+    except Exception as e:
+        # Update status to failed with error message
+        job.status = TranslationStatus.FAILED
+        job.error_message = str(e)
+        db.commit()
+
+# TODO: Use unique filenames to prevent collisions
+# Implement file cleanup for old translations
+# Move to cloud storage (AWS S3, Google Cloud Storage, etc.)
+# Add file expiration dates
+# Implement user-specific file access controls
