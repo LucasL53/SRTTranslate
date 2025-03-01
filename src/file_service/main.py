@@ -12,6 +12,7 @@ from .database import get_db, engine
 from .models.translation import TranslationJobResponse
 from .models.translation_job import TranslationJob, TranslationStatus, Base
 
+# SQL table create
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -36,7 +37,7 @@ def read_files():
     Returns:
         dict: A dictionary containing a list of filenames in the upload directory.
     """
-    ## TODO: Users can check on their own uploaded files
+    ## TODO: Users can only check on their own uploaded files
     return {"files": os.listdir(UPLOAD_DIR)}
 
 
