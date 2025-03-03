@@ -1,7 +1,8 @@
 import os
 from typing import Optional, List
-from fastapi import HTTPException, Depends, UploadFile, File, Form, Body
+from fastapi import HTTPException, Depends, UploadFile, File, Header, Body
 
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google.auth.transport.requests import Request
@@ -11,19 +12,48 @@ from ..file_service.main import app
 from .model import CaptionInsertRequest, CaptionResponse, CaptionUpdateRequest
 
 # Helper function to get authenticated YouTube service
-def get_authenticated_service(token: str):
-    pass
-    # try:
-    #     # Load credentials from the token
-    #     credentials = google.oauth2.credentials.Credentials.from_authorized_user_info(
-    #         info={"token": token},
-    #         scopes=SCOPES
-    #     )
+def get_authenticated_service(authorization: Optional[str] = Header(None)):
+    """ TODO: handle token refresh
+    Creates an authenticated YouTube API service using the access token
+    provided in the Authorization header.
+    
+    Args:
+        authorization: The Authorization header containing the access token in the format "Bearer {token}"
         
-    #     # Build the YouTube service
-    #     return build('youtube', 'v3', credentials=credentials)
-    # except Exception as e:
-    #     raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+    Returns:
+        An authenticated YouTube API service
+        
+    Raises:
+        HTTPException: If no valid authorization header is provided
+
+    Making a request to list captions:
+        response = requests.get(
+            "https://your-api.com/videos/VIDEO_ID/captions",
+            headers={
+                "Authorization": f"Bearer {token}"
+            }
+        )
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header. Please include 'Bearer {your_token}"
+        )
+    
+    token = authorization.replace("Bearer ", "")
+
+    try:
+        credentials = Credentials(token=token)
+
+        youtube = build(serviceName="youtube", version="v3", credentials=credentials)
+        return youtube
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed: {str(e)}"
+        )
+
+
 
 # Endpoint to insert a caption
 @app.post("/captions", response_model=CaptionResponse)

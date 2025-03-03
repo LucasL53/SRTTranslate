@@ -19,6 +19,7 @@ class TranslationJob(Base):
     original_file_path = Column(String)
     translated_file_path = Column(String, nullable=True)
     target_language = Column(String)
+    owner_id = Column(String)
     status = Column(SQLEnum(TranslationStatus))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

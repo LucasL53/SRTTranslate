@@ -6,6 +6,7 @@ from .translation_job import TranslationStatus
 class TranslationJobCreate(BaseModel):
     original_filename: str
     target_language: str
+    owner_id: str
 
 class TranslationJobResponse(BaseModel):
     id: int
